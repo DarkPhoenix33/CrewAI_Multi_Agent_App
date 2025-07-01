@@ -35,6 +35,16 @@ class TokenCountingCallbackHandler(BaseCallbackHandler):
                 self.input_tokens += token_usage["prompt_tokens"]
             if "completion_tokens" in token_usage:
                 self.output_tokens += token_usage["completion_tokens"]
+        else:
+            # Fallback: Iterate through generations to find token usage
+            for generation_list in response.generations:
+                for generation in generation_list:
+                    if generation.generation_info and "token_usage" in generation.generation_info:
+                        token_usage = generation.generation_info["token_usage"]
+                        if "prompt_tokens" in token_usage:
+                            self.input_tokens += token_usage["prompt_tokens"]
+                        if "completion_tokens" in token_usage:
+                            self.output_tokens += token_usage["completion_tokens"]
 
 # Initialize the PowerShellExecutor using st.cache_resource
 @st.cache_resource
@@ -43,51 +53,7 @@ def get_powershell_executor():
 
 powershell_tool = get_powershell_executor()
 
-# Define Agents (copied from src/main.py, now using the cached powershell_tool)
-iis_manager = Agent(
-    role='IIS Manager',
-    goal='Efficiently manage IIS web servers, application pools, and websites using precise PowerShell commands, specifically prioritizing `Get-ChildItem IIS:\\AppPools` for listing application pools and ensuring accurate, raw data retrieval.',
-    backstory='An expert in Microsoft IIS, capable of configuring, monitoring, and troubleshooting IIS environments with a focus on optimal PowerShell command usage and providing precise, raw output for all queries.',
-    verbose=True,
-    allow_delegation=True,
-    tools=[powershell_tool]
-)
 
-powershell_script_developer = Agent(
-    role='PowerShell Script Developer',
-    goal='Create highly efficient, robust, and reusable PowerShell script files, and manage file operations (read, write, append) ensuring correct formatting and saving of content as requested.',
-    backstory='A seasoned PowerShell scripter with a deep understanding of Windows automation, best practices, and meticulous file handling for script creation and data storage.',
-    verbose=True,
-    allow_delegation=True,
-    tools=[powershell_tool]
-)
-
-task_scheduler_agent = Agent(
-    role='Task Scheduler Agent',
-    goal='Automate tasks by creating, modifying, and managing scheduled tasks in Windows Task Scheduler with precise trigger settings and administrative privileges.',
-    backstory='Proficient in Windows Task Scheduler, ensuring timely and secure execution of automated scripts and commands with the necessary permissions.',
-    verbose=True,
-    allow_delegation=True,
-    tools=[powershell_tool]
-)
-
-windows_service_manager = Agent(
-    role='Windows Service Manager',
-    goal='Manage Windows services, including starting, stopping, restarting, and configuring them.',
-    backstory='An expert in Windows service administration, ensuring system stability and application availability.',
-    verbose=True,
-    allow_delegation=True,
-    tools=[powershell_tool]
-)
-
-log_event_manager = Agent(
-    role='Log and Event Manager',
-    goal='Monitor, analyze, and manage Windows event logs and application logs for troubleshooting and security.',
-    backstory='A specialist in log analysis, capable of extracting critical information from Windows event logs and various application logs.',
-    verbose=True,
-    allow_delegation=True,
-    tools=[powershell_tool]
-)
 
 # Define main_task (copied from src/main.py)
 main_task = Task(
@@ -173,6 +139,57 @@ if prompt := st.chat_input("What do you want to do?"):
         callbacks=[token_callback_handler]
     )
 
+    # Define Agents (moved inside the prompt block to use current_manager_llm)
+    iis_manager = Agent(
+        role='IIS Manager',
+        goal='Efficiently manage IIS web servers, application pools, and websites using precise PowerShell commands, specifically prioritizing `Get-ChildItem IIS:\AppPools` for listing application pools and ensuring accurate, raw data retrieval.',
+        backstory='An expert in Microsoft IIS, capable of configuring, monitoring, and troubleshooting IIS environments with a focus on optimal PowerShell command usage and providing precise, raw output for all queries.',
+        verbose=True,
+        allow_delegation=True,
+        tools=[powershell_tool],
+        llm=current_manager_llm # Assign the LLM with callback handler
+    )
+
+    powershell_script_developer = Agent(
+        role='PowerShell Script Developer',
+        goal='Create highly efficient, robust, and reusable PowerShell script files, and manage file operations (read, write, append) ensuring correct formatting and saving of content as requested.',
+        backstory='A seasoned PowerShell scripter with a deep understanding of Windows automation, best practices, and meticulous file handling for script creation and data storage.',
+        verbose=True,
+        allow_delegation=True,
+        tools=[powershell_tool],
+        llm=current_manager_llm # Assign the LLM with callback handler
+    )
+
+    task_scheduler_agent = Agent(
+        role='Task Scheduler Agent',
+        goal='Automate tasks by creating, modifying, and managing scheduled tasks in Windows Task Scheduler with precise trigger settings and administrative privileges.',
+        backstory='Proficient in Windows Task Scheduler, ensuring timely and secure execution of automated scripts and commands with the necessary permissions.',
+        verbose=True,
+        allow_delegation=True,
+        tools=[powershell_tool],
+        llm=current_manager_llm # Assign the LLM with callback handler
+    )
+
+    windows_service_manager = Agent(
+        role='Windows Service Manager',
+        goal='Manage Windows services, including starting, stopping, restarting, and configuring them.',
+        backstory='An expert in Windows service administration, ensuring system stability and application availability.',
+        verbose=True,
+        allow_delegation=True,
+        tools=[powershell_tool],
+        llm=current_manager_llm # Assign the LLM with callback handler
+    )
+
+    log_event_manager = Agent(
+        role='Log and Event Manager',
+        goal='Monitor, analyze, and manage Windows event logs and application logs for troubleshooting and security.',
+        backstory='A specialist in log analysis, capable of extracting critical information from Windows event logs and various application logs.',
+        verbose=True,
+        allow_delegation=True,
+        tools=[powershell_tool],
+        llm=current_manager_llm # Assign the LLM with callback handler
+    )
+
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
             try:
@@ -223,4 +240,4 @@ if prompt := st.chat_input("What do you want to do?"):
 # Display detailed logs if enabled and available
 if show_detailed_logs and st.session_state.detailed_logs:
     with st.expander("Detailed Agent Logs"):
-        st.code(st.session_session.detailed_logs, language="bash")
+        st.code(st.session_state.detailed_logs, language="bash")
